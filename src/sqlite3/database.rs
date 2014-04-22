@@ -77,7 +77,7 @@ impl Database {
         });
         if r == SQLITE_OK {
             debug!("`Database.prepare()`: stmt={:?}", new_stmt);
-            Ok( cursor_with_statement(new_stmt, &self.dbh))
+            Ok(Cursor::new(new_stmt, &self.dbh))
         } else {
             Err(r)
         }

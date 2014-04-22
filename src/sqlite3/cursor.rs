@@ -42,11 +42,6 @@ pub struct Cursor<'db> {
     dbh: &'db *dbh
 }
 
-pub fn cursor_with_statement<'db>(stmt: *stmt, dbh: &'db *dbh) -> Cursor<'db> {
-    debug!("`Cursor.cursor_with_statement()`: stmt={:?}", stmt);
-    Cursor { stmt: stmt, dbh: dbh }
-}
-
 #[unsafe_destructor]
 impl<'db> Drop for Cursor<'db> {
     /// Deletes a prepared SQL statement.
@@ -60,6 +55,10 @@ impl<'db> Drop for Cursor<'db> {
 }
 
 impl<'db> Cursor<'db> {
+    pub fn new<'dbh>(stmt: *stmt, dbh: &'dbh *dbh) -> Cursor<'dbh> {
+        debug!("`Cursor.new()`: stmt={:?}", stmt);
+        Cursor { stmt: stmt, dbh: dbh }
+    }
 
     /// Resets a prepared SQL statement, but does not reset its bindings.
     /// See http://www.sqlite.org/c3ref/reset.html

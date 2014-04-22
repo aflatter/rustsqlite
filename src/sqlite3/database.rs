@@ -29,7 +29,7 @@
 ** POSSIBILITY OF SUCH DAMAGE.
 */
 
-use cursor::*;
+use statement::*;
 use ffi::*;
 use libc::c_int;
 use std::ptr;
@@ -68,7 +68,7 @@ impl Database {
 
     /// Prepares/compiles an SQL statement.
     /// See http://www.sqlite.org/c3ref/prepare.html
-    pub fn prepare<'db>(&'db self, sql: &str, _tail: &Option<&str>) -> SqliteResult<Cursor<'db>> {
+    pub fn prepare<'db>(&'db self, sql: &str, _tail: &Option<&str>) -> SqliteResult<Statement<'db>> {
         let new_stmt = ptr::null();
         let r = sql.with_c_str( |_sql| {
             unsafe {
@@ -77,7 +77,7 @@ impl Database {
         });
         if r == SQLITE_OK {
             debug!("`Database.prepare()`: stmt={:?}", new_stmt);
-            Ok(Cursor::new(new_stmt, &self.dbh))
+            Ok(Statement::new(new_stmt, &self.dbh))
         } else {
             Err(r)
         }

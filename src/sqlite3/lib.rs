@@ -37,13 +37,13 @@
 extern crate libc;
 extern crate collections;
 
-pub use cursor::*;
+pub use statement::*;
 pub use database::*;
 use ffi::*;
 pub use types::*;
 use std::ptr;
 
-pub mod cursor;
+pub mod statement;
 pub mod database;
 mod ffi;
 
@@ -95,12 +95,12 @@ pub fn open(path: &str) -> SqliteResult<Database> {
 
 #[cfg(test)]
 mod tests {
-    use cursor::*;
+    use statement::*;
     use database::*;
     use super::*;
     use types::*;
 
-    fn checked_prepare<'db>(database: &'db Database, sql: &str) -> Cursor<'db> {
+    fn checked_prepare<'db>(database: &'db Database, sql: &str) -> Statement<'db> {
         match database.prepare(sql, &None) {
             Ok(s)  => s,
             Err(x) => fail!(format!("sqlite error: \"{}\" ({:?})", database.get_errmsg(), x)),

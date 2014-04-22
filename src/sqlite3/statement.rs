@@ -36,28 +36,28 @@ use std::str;
 use std::slice;
 use types::*;
 
-/// The database cursor.
-pub struct Cursor<'db> {
+/// A prepared statement.
+pub struct Statement<'db> {
     stmt: *stmt,
     dbh: &'db *dbh
 }
 
 #[unsafe_destructor]
-impl<'db> Drop for Cursor<'db> {
+impl<'db> Drop for Statement<'db> {
     /// Deletes a prepared SQL statement.
     /// See http://www.sqlite.org/c3ref/finalize.html
     fn drop(&mut self) {
-        debug!("`Cursor.drop()`: stmt={:?}", self.stmt);
+        debug!("`Statement.drop()`: stmt={:?}", self.stmt);
         unsafe {
             sqlite3_finalize(self.stmt);
         }
     }
 }
 
-impl<'db> Cursor<'db> {
-    pub fn new<'dbh>(stmt: *stmt, dbh: &'dbh *dbh) -> Cursor<'dbh> {
-        debug!("`Cursor.new()`: stmt={:?}", stmt);
-        Cursor { stmt: stmt, dbh: dbh }
+impl<'db> Statement<'db> {
+    pub fn new<'dbh>(stmt: *stmt, dbh: &'dbh *dbh) -> Statement<'dbh> {
+        debug!("`Statement.new()`: stmt={:?}", stmt);
+        Statement { stmt: stmt, dbh: dbh }
     }
 
     /// Resets a prepared SQL statement, but does not reset its bindings.
@@ -241,7 +241,7 @@ impl<'db> Cursor<'db> {
     /// See http://www.sqlite.org/c3ref/bind_blob.html
     pub fn bind_param(&self, i: int, value: &BindArg) -> ResultCode {
 
-        debug!("`Cursor.bind_param()`: stmt={:?}", self.stmt);
+        debug!("`Statement.bind_param()`: stmt={:?}", self.stmt);
 
         let r = match *value {
             Text(ref v) => {

@@ -15,4 +15,8 @@ tests:
 	rustc --test src/sqlite3/lib.rs --out-dir target -o target/tests
 	./target/tests
 
+doc: target
+	mkdir -p target/doc
+	rustdoc src/sqlite3/lib.rs -o target/doc
+
 .PHONY: default clean tests

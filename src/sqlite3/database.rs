@@ -29,12 +29,19 @@
 ** POSSIBILITY OF SUCH DAMAGE.
 */
 
-use statement::*;
-use ffi::*;
+use types::{ResultCode,
+            SQLITE_OK,
+            SQLITE_ERROR};
+
+use types::{dbh,
+            SqliteResult};
+
+use statement::Statement;
+use ffi;
+
 use libc::c_int;
 use std::ptr;
 use std::str;
-use types::*;
 
 /// The database connection.
 pub struct Database {
@@ -51,19 +58,17 @@ impl Drop for Database {
     fn drop(&mut self) {
         debug!("`Database.drop()`: dbh={:?}", self.dbh);
         unsafe {
-            sqlite3_close(self.dbh);
+            ffi::sqlite3_close(self.dbh);
         }
     }
 }
 
 impl Database {
-
     /// Returns the error message of the the most recent call.
     /// See http://www.sqlite.org/c3ref/errcode.html
     pub fn get_errmsg(&self) -> ~str {
         unsafe {
-            str::raw::from_c_str(sqlite3_errmsg(self.dbh))
-        }
+            str::raw::from_c_str(ffi::sqlite3_errmsg(self.dbh)) }
     }
 
     /// Prepares/compiles an SQL statement.
@@ -72,7 +77,7 @@ impl Database {
         let new_stmt = ptr::null();
         let r = sql.with_c_str( |_sql| {
             unsafe {
-                sqlite3_prepare_v2(self.dbh, _sql, sql.len() as c_int, &new_stmt, ptr::null())
+                ffi::sqlite3_prepare_v2(self.dbh, _sql, sql.len() as c_int, &new_stmt, ptr::null())
             }
         });
         if r == SQLITE_OK {
@@ -89,7 +94,7 @@ impl Database {
         let mut r = SQLITE_ERROR;
         sql.with_c_str( |_sql| {
             unsafe {
-                r = sqlite3_exec(self.dbh, _sql, ptr::null(), ptr::null(), ptr::null())
+                r = ffi::sqlite3_exec(self.dbh, _sql, ptr::null(), ptr::null(), ptr::null())
             }
         });
 
@@ -101,7 +106,7 @@ impl Database {
     /// See http://www.sqlite.org/c3ref/changes.html
     pub fn get_changes(&self) -> int {
         unsafe {
-            sqlite3_changes(self.dbh) as int
+            ffi::sqlite3_changes(self.dbh) as int
         }
     }
 
@@ -109,7 +114,7 @@ impl Database {
     /// See http://www.sqlite.org/c3ref/last_insert_rowid.html
     pub fn get_last_insert_rowid(&self) -> i64 {
         unsafe {
-            sqlite3_last_insert_rowid(self.dbh)
+            ffi::sqlite3_last_insert_rowid(self.dbh)
         }
     }
 
@@ -117,7 +122,7 @@ impl Database {
     /// See http://www.sqlite.org/c3ref/busy_timeout.html
     pub fn set_busy_timeout(&self, ms: int) -> ResultCode {
         unsafe {
-            sqlite3_busy_timeout(self.dbh, ms as c_int)
+            ffi::sqlite3_busy_timeout(self.dbh, ms as c_int)
         }
     }
 }

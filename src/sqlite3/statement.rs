@@ -29,12 +29,41 @@
 ** POSSIBILITY OF SUCH DAMAGE.
 */
 
-use ffi::*;
 use libc::{c_int, c_void};
 use collections::hashmap::HashMap;
 use std::str;
 use std::slice;
-use types::*;
+
+use ffi;
+
+// BindArg
+use types::{BindArg,
+            Null,
+            Integer,
+            Integer64,
+            Text,
+            Blob,
+            Float64,
+            StaticText};
+
+// ResultCode
+use types::{ResultCode,
+            SQLITE_OK,
+            SQLITE_ROW,
+            SQLITE_DONE};
+
+// ColumnType
+use types::{ColumnType,
+            SQLITE_INTEGER,
+            SQLITE_FLOAT,
+            SQLITE_TEXT,
+            SQLITE_BLOB,
+            SQLITE_NULL};
+
+use types::{dbh,
+            stmt,
+            RowMap,
+            SqliteResult};
 
 /// A prepared statement.
 pub struct Statement<'db> {
@@ -49,7 +78,7 @@ impl<'db> Drop for Statement<'db> {
     fn drop(&mut self) {
         debug!("`Statement.drop()`: stmt={:?}", self.stmt);
         unsafe {
-            sqlite3_finalize(self.stmt);
+            ffi::sqlite3_finalize(self.stmt);
         }
     }
 }
@@ -64,7 +93,7 @@ impl<'db> Statement<'db> {
     /// See http://www.sqlite.org/c3ref/reset.html
     pub fn reset(&self) -> ResultCode {
         unsafe {
-            sqlite3_reset(self.stmt)
+            ffi::sqlite3_reset(self.stmt)
         }
     }
 
@@ -72,7 +101,7 @@ impl<'db> Statement<'db> {
     /// See http://www.sqlite.org/c3ref/clear_bindings.html
     pub fn clear_bindings(&self) -> ResultCode {
         unsafe {
-            sqlite3_clear_bindings(self.stmt)
+            ffi::sqlite3_clear_bindings(self.stmt)
         }
     }
 
@@ -80,7 +109,7 @@ impl<'db> Statement<'db> {
     /// See http://www.sqlite.org/c3ref/step.html
     pub fn step(&self) -> ResultCode {
         unsafe {
-            sqlite3_step(self.stmt)
+            ffi::sqlite3_step(self.stmt)
         }
     }
 
@@ -120,7 +149,7 @@ impl<'db> Statement<'db> {
     /// See http://www.sqlite.org/c3ref/column_blob.html
     pub fn get_bytes(&self, i: int) -> int {
         unsafe {
-            sqlite3_column_bytes(self.stmt, i as c_int) as int
+            ffi::sqlite3_column_bytes(self.stmt, i as c_int) as int
         }
     }
 
@@ -130,7 +159,7 @@ impl<'db> Statement<'db> {
         let len    = self.get_bytes(i);
         unsafe {
             slice::raw::buf_as_slice(
-                sqlite3_column_blob(self.stmt, i as c_int), len as uint,
+                ffi::sqlite3_column_blob(self.stmt, i as c_int), len as uint,
                 |bytes| Vec::from_slice(bytes))
         }
     }
@@ -139,7 +168,7 @@ impl<'db> Statement<'db> {
     /// See http://www.sqlite.org/c3ref/column_blob.html
     pub fn get_int(&self, i: int) -> int {
         unsafe {
-            return sqlite3_column_int(self.stmt, i as c_int) as int;
+            return ffi::sqlite3_column_int(self.stmt, i as c_int) as int;
         }
     }
 
@@ -147,7 +176,7 @@ impl<'db> Statement<'db> {
     /// See http://www.sqlite.org/c3ref/column_blob.html
     pub fn get_i64(&self, i: int) -> i64 {
         unsafe {
-            return sqlite3_column_int64(self.stmt, i as c_int) as i64;
+            return ffi::sqlite3_column_int64(self.stmt, i as c_int) as i64;
         }
     }
 
@@ -155,7 +184,7 @@ impl<'db> Statement<'db> {
     /// See http://www.sqlite.org/c3ref/column_blob.html
     pub fn get_f64(&self, i: int) -> f64 {
         unsafe {
-            return sqlite3_column_double(self.stmt, i as c_int);
+            return ffi::sqlite3_column_double(self.stmt, i as c_int);
         }
     }
 
@@ -163,7 +192,7 @@ impl<'db> Statement<'db> {
     /// See http://www.sqlite.org/c3ref/column_blob.html
     pub fn get_text(&self, i: int) -> ~str {
         unsafe {
-            return str::raw::from_c_str( sqlite3_column_text(self.stmt, i as c_int) );
+            return str::raw::from_c_str(ffi::sqlite3_column_text(self.stmt, i as c_int) );
         }
     }
 
@@ -173,7 +202,7 @@ impl<'db> Statement<'db> {
         let stmt = self.stmt;
         unsafe {
             name.with_c_str( |_name| {
-              return sqlite3_bind_parameter_index(stmt, _name) as int
+              return ffi::sqlite3_bind_parameter_index(stmt, _name) as int
             })
         }
     }
@@ -182,7 +211,7 @@ impl<'db> Statement<'db> {
     /// See http://www.sqlite.org/c3ref/data_count.html
     pub fn get_column_count(&self) -> int {
         unsafe {
-            return sqlite3_data_count(self.stmt) as int;
+            return ffi::sqlite3_data_count(self.stmt) as int;
         }
     }
 
@@ -190,7 +219,7 @@ impl<'db> Statement<'db> {
     /// See http://www.sqlite.org/c3ref/column_name.html
     pub fn get_column_name(&self, i: int) -> ~str {
         unsafe {
-            return str::raw::from_c_str( sqlite3_column_name(self.stmt, i as c_int) );
+            return str::raw::from_c_str(ffi::sqlite3_column_name(self.stmt, i as c_int) );
         }
     }
 
@@ -199,7 +228,7 @@ impl<'db> Statement<'db> {
     pub fn get_column_type(&self, i: int) -> ColumnType {
         let ct;
         unsafe {
-            ct = sqlite3_column_type(self.stmt, i as c_int) as int;
+            ct = ffi::sqlite3_column_type(self.stmt, i as c_int) as int;
         }
         let res = match ct {
             1 /* SQLITE_INTEGER */ => SQLITE_INTEGER,
@@ -252,7 +281,7 @@ impl<'db> Statement<'db> {
                     debug!("  _v={:?}", _v);
                     unsafe {
                         // FIXME: do not copy the data
-                        sqlite3_bind_text(
+                        ffi::sqlite3_bind_text(
                               self.stmt   // the SQL statement
                             , i as c_int  // the SQL parameter index (starting from 1)
                             , _v          // the value to bind
@@ -270,7 +299,7 @@ impl<'db> Statement<'db> {
                 (*v).with_c_str( |_v| {
                     debug!("  _v={:?}", _v);
                     unsafe {
-                        sqlite3_bind_text(
+                        ffi::sqlite3_bind_text(
                               self.stmt   // the SQL statement
                             , i as c_int  // the SQL parameter index (starting from 1)
                             , _v          // the value to bind
@@ -287,7 +316,7 @@ impl<'db> Statement<'db> {
 
                 unsafe {
                     // FIXME: do not copy the data
-                    sqlite3_bind_blob(
+                    ffi::sqlite3_bind_blob(
                           self.stmt   // the SQL statement
                         , i as c_int  // the SQL parameter index (starting from 1)
                         , v.as_ptr()  // the value to bind
@@ -297,13 +326,13 @@ impl<'db> Statement<'db> {
                 }
             }
 
-            Integer(ref v) => { unsafe { sqlite3_bind_int(self.stmt, i as c_int, *v as c_int) } }
+            Integer(ref v) => { unsafe { ffi::sqlite3_bind_int(self.stmt, i as c_int, *v as c_int) } }
 
-            Integer64(ref v) => { unsafe { sqlite3_bind_int64(self.stmt, i as c_int, *v) } }
+            Integer64(ref v) => { unsafe { ffi::sqlite3_bind_int64(self.stmt, i as c_int, *v) } }
 
-            Float64(ref v) => { unsafe { sqlite3_bind_double(self.stmt, i as c_int, *v) } }
+            Float64(ref v) => { unsafe { ffi::sqlite3_bind_double(self.stmt, i as c_int, *v) } }
 
-            Null => { unsafe { sqlite3_bind_null(self.stmt, i as c_int) } }
+            Null => { unsafe { ffi::sqlite3_bind_null(self.stmt, i as c_int) } }
 
         };
 

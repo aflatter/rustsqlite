@@ -1,6 +1,6 @@
 #![crate_id="sqlite3#0.1"]
 #![crate_type = "lib"]
-#![feature(globs, phase)]
+#![feature(phase)]
 #[phase(syntax, link)] extern crate log;
 
 /*
@@ -37,15 +37,18 @@
 extern crate libc;
 extern crate collections;
 
-pub use statement::*;
-pub use database::*;
-use ffi::*;
-pub use types::*;
+pub use database::Database;
+pub use statement::Statement;
+pub use types::SqliteResult;
+
+use types::{SQLITE_OK,SQLITE_NOMEM};
+use ffi::{sqlite3_complete};
+
 use std::ptr;
 
-pub mod statement;
-pub mod database;
 mod ffi;
+mod database;
+mod statement;
 
 #[allow(non_camel_case_types)]
 pub mod types;
@@ -79,26 +82,27 @@ pub fn open(path: &str) -> SqliteResult<Database> {
     let dbh = ptr::null();
     let r = path.with_c_str( |_path| {
         unsafe {
-            sqlite3_open(_path, &dbh)
+            ffi::sqlite3_open(_path, &dbh)
         }
     });
     if r != SQLITE_OK {
         unsafe {
-            sqlite3_close(dbh);
+            ffi::sqlite3_close(dbh);
         }
         Err(r)
     } else {
         debug!("`open()`: dbh={:?}", dbh);
-        Ok(database_with_handle(dbh))
+        Ok(database::database_with_handle(dbh))
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use statement::*;
-    use database::*;
-    use super::*;
-    use types::*;
+    use types::{Integer,Integer64,Text,Float64,StaticText};
+    use types::{SQLITE_DONE,SQLITE_ROW,SQLITE_OK};
+    use types::{SqliteResult};
+    use statement::Statement;
+    use database::Database;
 
     fn checked_prepare<'db>(database: &'db Database, sql: &str) -> Statement<'db> {
         match database.prepare(sql, &None) {
@@ -108,7 +112,7 @@ mod tests {
     }
 
     fn checked_open() -> Database {
-        match open(":memory:") {
+        match super::open(":memory:") {
             Ok(database) => database,
             Err(ref e) => fail!(e.to_str()),
         }
@@ -323,8 +327,8 @@ mod tests {
 
     #[test]
     fn check_complete_sql() {
-        let r1 = sqlite_complete("SELECT * FROM");
-        let r2 = sqlite_complete("SELECT * FROM bob;");
+        let r1 = super::sqlite_complete("SELECT * FROM");
+        let r2 = super::sqlite_complete("SELECT * FROM bob;");
         assert!(is_ok_and(r1, false));
         assert!(is_ok_and(r2, true));
 

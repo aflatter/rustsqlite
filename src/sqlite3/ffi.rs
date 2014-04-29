@@ -29,8 +29,8 @@
 ** POSSIBILITY OF SUCH DAMAGE.
 */
 
-use libc::*;
-use types::*;
+use libc::{c_char,c_int,c_void};
+use types::{ResultCode,stmt,dbh,_notused};
 
 #[link(name = "sqlite3")]
 extern {

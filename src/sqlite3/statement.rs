@@ -36,6 +36,8 @@ use std::slice;
 
 use ffi;
 
+use database::Database;
+
 // BindArg
 use types::{BindArg,
             Null,
@@ -47,8 +49,7 @@ use types::{BindArg,
             StaticText};
 
 // ResultCode
-use types::{ResultCode,
-            SQLITE_OK,
+use types::{SQLITE_OK,
             SQLITE_ROW,
             SQLITE_DONE};
 
@@ -60,15 +61,16 @@ use types::{ColumnType,
             SQLITE_BLOB,
             SQLITE_NULL};
 
-use types::{dbh,
-            stmt,
+use types::{stmt,
             RowMap,
+            SqliteError,
+            SqliteMaybe,
             SqliteResult};
 
 /// A prepared statement.
 pub struct Statement<'db> {
     stmt: *stmt,
-    dbh: &'db *dbh
+    db: &'db Database
 }
 
 #[unsafe_destructor]
@@ -84,65 +86,70 @@ impl<'db> Drop for Statement<'db> {
 }
 
 impl<'db> Statement<'db> {
-    pub fn new<'dbh>(stmt: *stmt, dbh: &'dbh *dbh) -> Statement<'dbh> {
+    pub fn new<'dbh>(db: &'dbh Database, stmt: *stmt) -> Statement<'dbh> {
         debug!("`Statement.new()`: stmt={:?}", stmt);
-        Statement { stmt: stmt, dbh: dbh }
+        Statement { db: db, stmt: stmt }
     }
 
     /// Resets a prepared SQL statement, but does not reset its bindings.
     /// See http://www.sqlite.org/c3ref/reset.html
-    pub fn reset(&self) -> ResultCode {
-        unsafe {
+    pub fn reset(&self) -> SqliteMaybe {
+        let code = unsafe {
             ffi::sqlite3_reset(self.stmt)
+        };
+
+        match code {
+            SQLITE_OK => None,
+            _ => Some(SqliteError::from_code_and_db(code, self.db))
         }
     }
 
     /// Resets all bindings on a prepared SQL statement.
     /// See http://www.sqlite.org/c3ref/clear_bindings.html
-    pub fn clear_bindings(&self) -> ResultCode {
-        unsafe {
-            ffi::sqlite3_clear_bindings(self.stmt)
-        }
+    pub fn clear_bindings(&self) {
+        unsafe { ffi::sqlite3_clear_bindings(self.stmt) };
     }
 
     /// Evaluates a prepared SQL statement one ore more times.
     /// See http://www.sqlite.org/c3ref/step.html
-    pub fn step(&self) -> ResultCode {
-        unsafe {
-            ffi::sqlite3_step(self.stmt)
+    pub fn step(&self) -> SqliteResult<bool> {
+        let code = unsafe { ffi::sqlite3_step(self.stmt) };
+
+        match code {
+          SQLITE_DONE => Ok(false),
+          SQLITE_ROW => Ok(true),
+          _ => Err(SqliteError::from_code_and_db(code, self.db))
         }
     }
 
     ///
     pub fn step_row(&self) -> SqliteResult<Option<RowMap>> {
-        let is_row: ResultCode = self.step();
-        if is_row == SQLITE_ROW {
-            let column_cnt = self.get_column_count();
-            let mut i = 0;
-            let mut sqlrow = HashMap::new();
-            while i < column_cnt {
-                let name = self.get_column_name(i);
-                let coltype = self.get_column_type(i);
-                let res = match coltype {
-                    SQLITE_INTEGER => sqlrow.insert(name, Integer(self.get_int(i))),
-                    SQLITE_FLOAT   => sqlrow.insert(name, Float64(self.get_f64(i))),
-                    SQLITE_TEXT    => sqlrow.insert(name, Text(self.get_text(i))),
-                    SQLITE_BLOB    => sqlrow.insert(name, Blob(self.get_blob(i))),
-                    SQLITE_NULL    => sqlrow.insert(name, Null),
-                };
-                if res == false {
-                    fail!("Couldn't insert a value into the map for sqlrow!");
+        self.step().map(|more| {
+            if more {
+                let column_cnt = self.get_column_count();
+                let mut i = 0;
+                let mut sqlrow = HashMap::new();
+                while i < column_cnt {
+                    let name = self.get_column_name(i);
+                    let coltype = self.get_column_type(i);
+                    let res = match coltype {
+                        SQLITE_INTEGER => sqlrow.insert(name, Integer(self.get_int(i))),
+                        SQLITE_FLOAT   => sqlrow.insert(name, Float64(self.get_f64(i))),
+                        SQLITE_TEXT    => sqlrow.insert(name, Text(self.get_text(i))),
+                        SQLITE_BLOB    => sqlrow.insert(name, Blob(self.get_blob(i))),
+                        SQLITE_NULL    => sqlrow.insert(name, Null),
+                    };
+                    if res == false {
+                        fail!("Couldn't insert a value into the map for sqlrow!");
+                    }
+                    i += 1;
                 }
-                i += 1;
-            }
 
-            Ok(Some(sqlrow))
-        }
-        else if is_row == SQLITE_DONE {
-            Ok(None)
-        } else {
-            Err(is_row)
-        }
+                Some(sqlrow)
+            } else {
+                None
+            }
+        })
     }
 
     ///
@@ -254,22 +261,19 @@ impl<'db> Statement<'db> {
     }
 
     ///
-    pub fn bind_params(&self, values: &[BindArg]) -> ResultCode {
-        let mut i = 0i;
-        for v in values.iter() {
-            let r = self.bind_param(i, v);
-            if r != SQLITE_OK {
-                return r;
-            }
-            i += 1;
+    pub fn bind_params(&self, values: &[BindArg]) -> SqliteMaybe {
+        for (index,value) in values.iter().enumerate() {
+            self.bind_param(index as int, value).and_then(|err| {
+                return Some(err);
+            });
         }
-        return SQLITE_OK;
+
+        None
     }
 
     ///
     /// See http://www.sqlite.org/c3ref/bind_blob.html
-    pub fn bind_param(&self, i: int, value: &BindArg) -> ResultCode {
-
+    pub fn bind_param(&self, i: int, value: &BindArg) -> SqliteMaybe {
         debug!("`Statement.bind_param()`: stmt={:?}", self.stmt);
 
         let r = match *value {
@@ -336,6 +340,9 @@ impl<'db> Statement<'db> {
 
         };
 
-        return r;
+        match r {
+          SQLITE_OK => None,
+          _ => Some(SqliteError::from_code_and_db(r, self.db))
+        }
     }
 }

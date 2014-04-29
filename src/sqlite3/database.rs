@@ -29,11 +29,11 @@
 ** POSSIBILITY OF SUCH DAMAGE.
 */
 
-use types::{ResultCode,
-            SQLITE_OK,
-            SQLITE_ERROR};
+use types::SQLITE_OK;
 
 use types::{dbh,
+            SqliteError,
+            SqliteMaybe,
             SqliteResult};
 
 use statement::Statement;
@@ -82,23 +82,25 @@ impl Database {
         });
         if r == SQLITE_OK {
             debug!("`Database.prepare()`: stmt={:?}", new_stmt);
-            Ok(Statement::new(new_stmt, &self.dbh))
+            Ok(Statement::new(self, new_stmt))
         } else {
-            Err(r)
+            Err(SqliteError::from_code_and_db(r, self))
         }
     }
 
     /// Executes an SQL statement.
     /// See http://www.sqlite.org/c3ref/exec.html
     pub fn exec(&self, sql: &str) -> SqliteResult<bool> {
-        let mut r = SQLITE_ERROR;
-        sql.with_c_str( |_sql| {
+        let code = sql.with_c_str( |_sql| {
             unsafe {
-                r = ffi::sqlite3_exec(self.dbh, _sql, ptr::null(), ptr::null(), ptr::null())
+                ffi::sqlite3_exec(self.dbh, _sql, ptr::null(), ptr::null(), ptr::null())
             }
         });
 
-        if r == SQLITE_OK { Ok(true) } else { Err(r) }
+        match code {
+          SQLITE_OK => Ok(true),
+          _ => Err(SqliteError::from_code_and_db(code, self))
+        }
     }
 
     /// Returns the number of modified/inserted/deleted rows by the most recent
@@ -120,9 +122,12 @@ impl Database {
 
     /// Sets a busy timeout.
     /// See http://www.sqlite.org/c3ref/busy_timeout.html
-    pub fn set_busy_timeout(&self, ms: int) -> ResultCode {
-        unsafe {
-            ffi::sqlite3_busy_timeout(self.dbh, ms as c_int)
+    pub fn set_busy_timeout(&self, ms: int) -> SqliteMaybe {
+        let code = unsafe { ffi::sqlite3_busy_timeout(self.dbh, ms as c_int) };
+
+        match code {
+          SQLITE_OK => None,
+          _ => Some(SqliteError::from_code_and_db(code, self))
         }
     }
 }

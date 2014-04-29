@@ -37,6 +37,7 @@ extern {
     pub fn sqlite3_open(path: *c_char, hnd: **dbh) -> ResultCode;
     pub fn sqlite3_close(dbh: *dbh) -> ResultCode;
     pub fn sqlite3_errmsg(dbh: *dbh) -> *c_char;
+    pub fn sqlite3_errstr(code: ResultCode) -> *c_char;
     pub fn sqlite3_changes(dbh: *dbh) -> c_int;
     pub fn sqlite3_last_insert_rowid(dbh: *dbh) -> i64;
     pub fn sqlite3_complete(sql: *c_char) -> c_int;

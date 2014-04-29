@@ -39,7 +39,8 @@ extern crate collections;
 
 pub use database::Database;
 pub use statement::Statement;
-pub use types::SqliteResult;
+pub use types::{SqliteResult,
+                SqliteError};
 
 use types::{SQLITE_OK,SQLITE_NOMEM};
 use ffi::{sqlite3_complete};
@@ -58,19 +59,19 @@ pub mod types;
 /// Determines whether an SQL statement is complete.
 /// See http://www.sqlite.org/c3ref/complete.html
 pub fn sqlite_complete(sql: &str) -> SqliteResult<bool> {
-    let r = sql.with_c_str( { |_sql|
-        unsafe {
-            sqlite3_complete(_sql)
-        }
+    // The C interface returns an int, cast the result code.
+    static NOMEM: int = SQLITE_NOMEM as int;
+
+    let code = sql.with_c_str({ |_sql|
+        unsafe { ffi::sqlite3_complete(_sql) }
     }) as int;
-    if r == SQLITE_NOMEM as int {
-        return Err(SQLITE_NOMEM);
-    }
-    else if r == 1 {
-        return Ok(true);
-    }
-    else {
-        return Ok(false);
+
+    match code {
+        0 => Ok(false), // 0 is returned for an incomplete input.
+        1 => Ok(true),  // 1 designates a complete input.
+        NOMEM => Err(SqliteError::from_code(SQLITE_NOMEM)),
+        _ => fail!("sqlite_complete() returned an unknown error")
+
     }
 }
 
@@ -89,7 +90,7 @@ pub fn open(path: &str) -> SqliteResult<Database> {
         unsafe {
             ffi::sqlite3_close(dbh);
         }
-        Err(r)
+        Err(SqliteError::from_code(r))
     } else {
         debug!("`open()`: dbh={:?}", dbh);
         Ok(database::database_with_handle(dbh))
@@ -99,7 +100,6 @@ pub fn open(path: &str) -> SqliteResult<Database> {
 #[cfg(test)]
 mod tests {
     use types::{Integer,Integer64,Text,Float64,StaticText};
-    use types::{SQLITE_DONE,SQLITE_ROW,SQLITE_OK};
     use types::{SqliteResult};
     use statement::Statement;
     use database::Database;
@@ -158,9 +158,9 @@ mod tests {
         );
 
         let sth = checked_prepare(&database, "SELECT id FROM test WHERE id = 1;");
-        assert!(sth.step() == SQLITE_ROW);
+        assert_eq!(sth.step().unwrap(), true);
         assert!(sth.get_int(0) == 1);
-        assert!(sth.step() == SQLITE_DONE);
+        assert_eq!(sth.step().unwrap(), false);
     }
 
     #[test]
@@ -175,9 +175,9 @@ mod tests {
         );
 
         let sth = checked_prepare(&database, "SELECT v FROM test WHERE id = 1;");
-        assert!(sth.step() == SQLITE_ROW);
+        assert_eq!(sth.step().unwrap(), true);
         assert!(sth.get_blob(0) == vec!(0x00, 0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde, 0xff));
-        assert!(sth.step() == SQLITE_DONE);
+        assert_eq!(sth.step().unwrap(), false);
     }
 
     #[test]
@@ -192,10 +192,10 @@ mod tests {
                 INSERT OR IGNORE INTO test (id) VALUES(4);"
         );
         let sth = checked_prepare(&database, "SELECT id FROM test WHERE id > ? AND id < ?");
-        assert!(sth.bind_param(1, &Integer(2)) == SQLITE_OK);
-        assert!(sth.bind_param(2, &Integer(4)) == SQLITE_OK);
+        assert_eq!(sth.bind_param(1, &Integer(2)), None);
+        assert_eq!(sth.bind_param(2, &Integer(4)), None);
 
-        assert!(sth.step() == SQLITE_ROW);
+        assert_eq!(sth.step().unwrap(), true);
         assert!(sth.get_f64(0) as int == 3);
     }
 
@@ -210,9 +210,9 @@ mod tests {
              INSERT OR IGNORE INTO test (id) VALUES(1234567890123456);"
         );
         let sth = checked_prepare(&database, "SELECT id FROM test WHERE id > ?");
-        assert!(sth.bind_param(1, &Integer64(1234567890120000)) == SQLITE_OK);
+        assert_eq!(sth.bind_param(1, &Integer64(1234567890120000)), None);
 
-        assert!(sth.step() == SQLITE_ROW);
+        assert_eq!(sth.step().unwrap(), true);
         assert!(sth.get_i64(0) == 1234567890123456);
     }
 
@@ -224,7 +224,7 @@ mod tests {
 
         let sth = checked_prepare(&database, "INSERT INTO test (name) VALUES (?)");
 
-        assert!(sth.bind_param(1, &Text(~"test")) == SQLITE_OK);
+        assert_eq!(sth.bind_param(1, &Text(~"test")), None);
     }
 
     #[test]
@@ -235,7 +235,7 @@ mod tests {
 
         let sth = checked_prepare(&database, "INSERT INTO test (name) VALUES (?)");
 
-        assert!(sth.bind_param(1, &StaticText("test")) == SQLITE_OK);
+        assert_eq!(sth.bind_param(1, &StaticText("test")), None);
     }
 
     #[test]
@@ -249,7 +249,7 @@ mod tests {
                 COMMIT;"
         );
         let sth = checked_prepare(&database, "SELECT * FROM test");
-        assert!(sth.step() == SQLITE_ROW);
+        assert_eq!(sth.step().unwrap(), true);
         assert!(sth.get_column_names() == vec!(~"id", ~"v"));
     }
 

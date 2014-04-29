@@ -31,6 +31,10 @@
 
 use collections::hashmap::HashMap;
 use std::fmt;
+use std::str;
+
+use database::Database;
+use ffi;
 
 #[deriving(Eq)]
 #[repr(C)]
@@ -121,7 +125,37 @@ pub enum ColumnType {
     SQLITE_NULL,
 }
 
-pub type SqliteResult<T> = Result<T, ResultCode>;
+pub type SqliteResult<T> = Result<T, SqliteError>;
+pub type SqliteMaybe = Option<SqliteError>;
+
+#[deriving(Eq)]
+pub struct SqliteError {
+  /// The sqlite3 result code, see:
+  /// http://www.sqlite.org/c3ref/c_abort_rollback.html.
+  pub code: ResultCode,
+
+  /// The error message as reported by sqlite3.
+  /// http://www.sqlite.org/c3ref/errcode.html
+  pub message: ~str
+}
+
+impl SqliteError {
+    pub fn from_code_and_db(code: ResultCode, db: &Database) -> SqliteError {
+        let message = db.get_errmsg();
+        SqliteError { code: code, message: message }
+    }
+
+    pub fn from_code(code: ResultCode) -> SqliteError {
+        let message = unsafe { str::raw::from_c_str(ffi::sqlite3_errstr(code)) };
+        SqliteError { code: code, message: message }
+    }
+}
+
+impl fmt::Show for SqliteError {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        write!(fmt.buf, "{}: {}", self.code, self.message)
+    }
+}
 
 pub type RowMap = HashMap<~str, BindArg>;
 

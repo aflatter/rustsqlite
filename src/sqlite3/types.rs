@@ -106,7 +106,7 @@ impl fmt::Show for ResultCode {
     }
 }
 
-#[deriving(Eq)]
+#[deriving(Eq,Show)]
 pub enum BindArg {
     Text(~str),
     StaticText(&'static str),

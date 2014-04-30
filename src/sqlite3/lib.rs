@@ -282,6 +282,37 @@ mod tests {
     }
 
     #[test]
+    fn bind_params() {
+        let database = checked_open();
+
+        checked_exec(&database,
+            "BEGIN;
+             CREATE TABLE IF NOT EXISTS test (id INTEGER PRIMARY KEY AUTOINCREMENT, v TEXT);
+             INSERT OR IGNORE INTO test (id, v) VALUES(1, 'leeeee');
+             COMMIT;"
+        );
+
+        let stmt = checked_prepare(&database, "SELECT * FROM test WHERE id = :Id AND v=:Name");
+        assert_eq!(stmt.bind_params([Integer(1), Text(~"leeeee")]), None);
+        assert_eq!(stmt.step().unwrap(), true);
+    }
+
+    #[test]
+    fn bind_params_out_of_range() {
+        use super::types::SQLITE_RANGE;
+
+        let database = checked_open();
+        checked_exec(
+            &database,
+            "CREATE TABLE IF NOT EXISTS test (id INTEGER PRIMARY KEY AUTOINCREMENT, v TEXT)"
+        );
+        let stmt = checked_prepare(&database, "SELECT * FROM test WHERE id = ?");
+        let err = stmt.bind_params([Integer(1), Integer(2)]).expect("Error");
+        
+        assert_eq!(err.code, SQLITE_RANGE);
+    }
+
+    #[test]
     fn last_insert_id() {
         let database = checked_open();
         checked_exec(&database,

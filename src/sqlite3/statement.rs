@@ -263,9 +263,11 @@ impl<'db> Statement<'db> {
     ///
     pub fn bind_params(&self, values: &[BindArg]) -> SqliteMaybe {
         for (index,value) in values.iter().enumerate() {
-            self.bind_param(index as int, value).and_then(|err| {
-                return Some(err);
-            });
+            let result = self.bind_param(index as int + 1, value);
+            
+            if result.is_some() {
+                return Some(result.unwrap());
+            }
         }
 
         None
